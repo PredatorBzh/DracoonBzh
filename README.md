@@ -49,7 +49,7 @@ Comme tous les autres outils non-officiels et respectant les CGU, cet outil est 
 Dracoon permettant de modifier le comportement de votre clavier (touche de raccourcis) il est normal que Windows ajoute une sécurité supplémentaire. Le comportement de Windows est le même sur d'autres outils.
 
 * **L'auto-focus ne fonctionne pas**
-* 
+
 Vous pouvez afficher le mode "debug" dans l'onglet d'auto-focus. Ensuite faite un échange entre vos personnages et vérifie si la notification est bien affichée dans les logs. SI ce n'est pas le cas, c'est que les notifications ne sont pas bien activée sur votre ordinateur.
 
 * **Ce programme est-il autorisé par Ankama ?**

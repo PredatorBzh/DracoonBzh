@@ -4,6 +4,11 @@ Dracoon est un outil ayant pour but de faciliter et automatiser la gestion des f
 
 Le programme **intègre les fonctionnalités déjà connues** par une grande partie de joueur (tri des comptes selon l'ordre d'initiative, compte suivant/précédent via une touche...) et **ajoute un système d’Auto-Focus**.
 
+[!(https://raw.githubusercontent.com/Codecademy/docs/main/media/codey.jpg)](https://codecademy.com](https://youtu.be/6R7pPM_5euM?si=rbaap2wmPkgNOXr4)
+
+
+Vidéo de présentation : https://youtu.be/6R7pPM_5euM
+
 ---
 
 # Cas d’utilisation

@@ -1,8 +1,10 @@
 # Présentation
 
-Dracoon est un outil développé 100% par l'IA en **Python**. Cet ouril pour but de faciliter et automatiser la gestion des fenetres de Dofus Rétro, en monocompte et en multicompte.
+Dracoon est un outil développé 100% par l'IA en **Python**. Cet ouril pour but de faciliter et automatiser la gestion des fenetres de Dofus Rétro en monocompte et en multicompte, tout en restant respectueux des CGU.
 
-Le programme **intègre plusieurs fonctionnalités déjà connues** et utiles (tri des comptes selon l'ordre d'initiative, compte suivant/précédent via une touche...). La principale nouveauté de ce projet est le **système d’Auto-Focus**.
+Le programme **intègre les fonctionnalités déjà connues** et utilisées par une grande partie de joueur (tri des comptes selon l'ordre d'initiative, compte suivant/précédent via une touche...) et **ajoute un système d’Auto-Focus**.
+
+Comme tous les autres outils non-officiels et respectant les CGU, cet outil est toléré par Ankama.
 
 ---
 
@@ -13,7 +15,6 @@ Le programme **intègre plusieurs fonctionnalités déjà connues** et utiles (t
 * jouer sur un seul compte tout en faisant autre chose à côté. Le programme effectuera le changement de fenetre lorsque vous êtes demandé
 
 **Multicompte**
-
 * échanges entre comptes
 * création de groupes
 * navigation rapide entre les personnages
@@ -43,12 +44,23 @@ L’objectif est donc d’avoir un outil **simple, automatisé et respectueux de
 
 # Amélioration
 
-Ce projet est en évolution.
-
 Je suis **ouvert aux retours et aux suggestions d’amélioration** :
 
 * si certaines fonctionnalités ne fonctionnent pas correctement
 * si le système n’est pas assez rapide
 * si vous avez des idées d’amélioration
+* si le système n'est pas intuitif
 
 N’hésitez pas à **ouvrir une issue ou proposer des améliorations sur twitter @Slyss42**.
+
+---
+
+# Rappel concernant ce genre d'outils
+
+Petit rappel de la part d'Ankama concernant les règles fixée autour des outils fan-made :
+"L'utilisation d'un logiciel tiers est tolérée UNIQUEMENT s'il ne modifie/n'interagit pas avec les fichiers du jeu ou le jeu en lui-même. 
+Ne s'agissant pas d'un outil officiellement pris en charge par Ankama, nous vous rappelons que nous ne pouvons pas garantir la sécurité du logiciel et que son utilisation peut comporter des risques. En cas d'éventuelles violations de données ou de logs, le joueur sera tenu responsable.
+Il est également important de distinguer un outil de gestion de fenêtre d'autres outils tiers comme les macros, ces dernières sont strictement interdites.."
+
+
+

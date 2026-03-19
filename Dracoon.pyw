@@ -1,6 +1,7 @@
 import asyncio
 import ctypes
 import ctypes.wintypes as wt
+import json
 import os
 import re
 import sys
@@ -16,7 +17,7 @@ from datetime import datetime
 # 1. INFORMATIONS GÉNÉRALES
 # ══════════════════════════════════════════════════════════════════════════════
 
-APP_VERSION = "1.0.0"
+APP_VERSION = "2.0.0"
 APP_GITHUB  = "https://github.com/Slyss42/Dracoon"
 APP_TWITTER = "https://x.com/Slyss42"
 APP_LEGAL   = (
@@ -194,9 +195,14 @@ def focus_window(hwnd: int) -> tuple[bool, str]:
         title = win32gui.GetWindowText(hwnd)
         if win32gui.IsIconic(hwnd):
             win32gui.ShowWindow(hwnd, win32con.SW_RESTORE)
+        # VK_MENU (Alt) est nécessaire pour forcer SetForegroundWindow depuis un autre process.
+        # Le try/finally garantit que la touche est toujours relâchée, même en cas d'exception,
+        # pour éviter qu'Alt reste "collé" au clavier.
         win32api.keybd_event(win32con.VK_MENU, 0, 0, 0)
-        win32gui.SetForegroundWindow(hwnd)
-        win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
+        try:
+            win32gui.SetForegroundWindow(hwnd)
+        finally:
+            win32api.keybd_event(win32con.VK_MENU, 0, win32con.KEYEVENTF_KEYUP, 0)
         return True, title
     except Exception as e:
         return False, str(e)
@@ -212,6 +218,31 @@ def list_dofus_windows() -> list[str]:
         return True
     win32gui.EnumWindows(cb, None)
     return result
+
+
+def is_dofus_foreground() -> bool:
+    """Retourne True si la fenêtre active est une fenêtre Dofus Rétro."""
+    if not WIN32_OK:
+        return False
+    try:
+        hwnd = win32gui.GetForegroundWindow()
+        title = win32gui.GetWindowText(hwnd)
+        return bool(TITLE_PATTERN.match(title))
+    except Exception:
+        return False
+
+
+def _release_modifier_keys():
+    """Force le relâchement de Ctrl et Alt pour éviter les touches collées à la fermeture."""
+    if not WIN32_OK:
+        return
+    for vk in (win32con.VK_MENU, win32con.VK_CONTROL,
+               win32con.VK_LMENU, win32con.VK_RMENU,
+               win32con.VK_LCONTROL, win32con.VK_RCONTROL):
+        try:
+            win32api.keybd_event(vk, 0, win32con.KEYEVENTF_KEYUP, 0)
+        except Exception:
+            pass
 
 
 # ─── TECHNIQUE : Onglet Raccourcis : sauvegarde des touches dans le registre ──────────────
@@ -266,14 +297,88 @@ def _unhook_all():
     except Exception:
         pass
 
+
+def _build_config(shortcut_next, shortcut_prev, shortcut_back,
+                  char_af_overrides: dict | None = None,
+                  shortcut_main=None, char_main=None,
+                  welcome_shown: bool = False,
+                  char_skip_names: set | None = None) -> dict:
+    """Construit le dictionnaire de configuration à persister dans le registre."""
+    return {
+        "shortcut_next":     shortcut_next,
+        "shortcut_prev":     shortcut_prev,
+        "shortcut_back":     shortcut_back,
+        "shortcut_main":     shortcut_main,
+        "char_main":         char_main if char_main is not None else "",
+        "char_af_overrides": _encode_af_overrides(char_af_overrides or {}),
+        "welcome_shown":     "1" if welcome_shown else "0",
+        "char_skip_names":   json.dumps(sorted(char_skip_names), ensure_ascii=False)
+                             if char_skip_names else "[]",
+    }
+
 # ─── TECHNIQUE : Onglet Autofocus : (Notifications)                  ──────────────
 POLL_INTERVAL = 0.1
 
+# ══════════════════════════════════════════════════════════════════════════════
+# PATTERNS DE NOTIFICATIONS
+# ══════════════════════════════════════════════════════════════════════════════
+# Structure : (clé, [pattern_1, pattern_2, ...], emoji)
+#
+# Chaque entrée regroupe TOUS les patterns d'une même action (toutes langues).
+# Pour qu'une notification corresponde à un type, il suffit qu'AU MOINS UN
+# des patterns de la liste matche le corps de la notification.
+#
+# ── Comment ajouter une langue (ex. anglais) ───────────────────────────────
+# Il suffit d'ajouter le pattern anglais dans la liste du type concerné.
+# Les lignes EN sont déjà présentes en commentaire ci-dessous — il suffit
+# de les décommenter et d'y saisir le texte exact de la notification anglaise.
+# ══════════════════════════════════════════════════════════════════════════════
+
 NOTIF_TYPES = [
-    ("combat",  re.compile(r"de jouer",                             re.IGNORECASE), "⚔️"),
-    ("echange", re.compile(r"te propose de faire un échange",       re.IGNORECASE), "🔄"),
-    ("groupe",  re.compile(r"t['']invite .+ rejoindre son groupe",  re.IGNORECASE), "👥"),
-    ("mp",      re.compile(r"^de ",                                 re.IGNORECASE), "💬"),
+    # ── Combat : invitation à jouer (tour par tour) ──────────────────────────
+    ("combat", [
+        re.compile(r"de jouer",                             re.IGNORECASE),  # FR
+        # re.compile(r"<texte anglais combat>",             re.IGNORECASE),  # EN
+    ], "⚔️"),
+
+    # ── Échange : proposition d'échange ──────────────────────────────────────
+    ("echange", [
+        re.compile(r"te propose de faire un échange",       re.IGNORECASE),  # FR
+        # re.compile(r"<texte anglais échange>",            re.IGNORECASE),  # EN
+    ], "🔄"),
+
+    # ── Groupe : invitation à rejoindre un groupe ou une guilde ──────────────
+    ("groupe", [
+        re.compile(r"t['']invite .+ rejoindre son groupe",  re.IGNORECASE),  # FR groupe
+        re.compile(r"t['']invite .+ rejoindre sa guilde",   re.IGNORECASE),  # FR guilde
+        # re.compile(r"<texte anglais groupe>",             re.IGNORECASE),  # EN
+    ], "👥"),
+
+    # ── MP : message privé ────────────────────────────────────────────────────
+    ("mp", [
+        re.compile(r"^de ",                                 re.IGNORECASE),  # FR
+        # re.compile(r"<texte anglais MP>",                 re.IGNORECASE),  # EN
+    ], "💬"),
+
+    # ── Défi : invitation à un duel ───────────────────────────────────────────
+    ("defi", [
+        re.compile(r"te défie",                             re.IGNORECASE),  # FR
+        # re.compile(r"<texte anglais défi>",               re.IGNORECASE),  # EN
+    ], "🏆"),
+
+    # ── Craft : atelier / artisan / fabrication terminée ─────────────────────
+    ("craft", [
+        re.compile(r"fait appel à tes talents d.artisan",   re.IGNORECASE),  # FR artisan
+        re.compile(r"rejoindre son atelier",                re.IGNORECASE),  # FR atelier
+        re.compile(r"tous les objets ont été fabriqués",    re.IGNORECASE),  # FR fabrication
+        # re.compile(r"<texte anglais craft>",              re.IGNORECASE),  # EN
+    ], "🔨"),
+
+    # ── PVP : percepteur attaqué ──────────────────────────────────────────────
+    ("pvp", [
+        re.compile(r"percepteur.+est attaqué en",           re.IGNORECASE),  # FR
+        # re.compile(r"<texte anglais pvp>",                re.IGNORECASE),  # EN
+    ], "🛡️"),
 ]
 
 def focus_dofus_window(pseudo: str) -> tuple[bool, str]:
@@ -289,6 +394,21 @@ def focus_dofus_window(pseudo: str) -> tuple[bool, str]:
     if not found:
         return False, f"Aucune fenêtre « {pseudo} - Dofus… » trouvée"
     return focus_window(found[0][0])
+
+
+def _encode_af_overrides(overrides: dict) -> str:
+    """Sérialise les surcharges autofocus par personnage → JSON (stockage registre)."""
+    return json.dumps(overrides, ensure_ascii=False)
+
+
+def _decode_af_overrides(raw: str) -> dict:
+    """Désérialise les surcharges autofocus depuis le registre.
+    Retourne {} si absent ou invalide → chemin rapide garanti au démarrage.
+    """
+    try:
+        return json.loads(raw) if raw else {}
+    except Exception:
+        return {}
 
 
 
@@ -318,17 +438,21 @@ class UIStyles:
         padx_type_notif = 10
         pady_type_notif = 4
 
+        font_type_notifnobold = ("Segoe UI", 11)
+        padx_type_notifnobold = 10
+        pady_type_notifnobold = 4
+
         font_petit      = ("Segoe UI", 11)
         padx_petit      = 12
         pady_petit      = 5
 
     class EnTete:
-        font           = ("Segoe UI", 11, "bold")
+        font           = ("Segoe UI", 12, "bold")
         pady_titre     = (14, 2)   # (haut, bas) du titre
         pady_sous      = (0, 10)   # (haut, bas) du sous-titre
 
     class Info:
-        font = ("Segoe UI", 10)
+        font = ("Segoe UI", 11)
 
 
 # ─── Application principale ───────────────────────────────────────────────────
@@ -354,6 +478,9 @@ class App(tk.Tk):
         "echange": "#f5a623",
         "groupe":  "#4caf78",
         "mp":      "#4a90d9",
+        "defi":    "#c97bdb",
+        "craft":   "#e8a040",
+        "pvp":     "#e05252",
     }
 
     # Valeur sentinelle pour "aucun raccourci"
@@ -364,8 +491,8 @@ class App(tk.Tk):
         self.title("Dracoon - Gestionnaire de fenêtres Dofus Rétro")
         self.configure(bg=self.BG)
         self.resizable(True, True)
-        self.geometry("660x610")
-        self.minsize(460, 400)
+        self.geometry("740x810")
+        self.minsize(500, 460)
 
         # Charger la config
         cfg = _load_config()
@@ -385,8 +512,38 @@ class App(tk.Tk):
         # Raccourcis chargés depuis le registre
         raw_next = cfg.get("shortcut_next", "ctrl+right")
         raw_prev = cfg.get("shortcut_prev", "ctrl+left")
+        raw_back = cfg.get("shortcut_back", None)
+        raw_main = cfg.get("shortcut_main", None)
         self._shortcut_next: str | None = raw_next
         self._shortcut_prev: str | None = raw_prev
+        self._shortcut_back: str | None = raw_back
+        self._shortcut_main: str | None = raw_main
+
+        # Personnage principal — un seul possible, persisté dans le registre.
+        # La touche de raccourci "main" le focus directement, même s'il est exclu du roulement.
+        _raw_main = cfg.get("char_main", "") or None
+        self._char_main: str | None = _raw_main
+
+        # Surcharges autofocus par personnage — chargées depuis le registre.
+        # Vide = aucune surcharge → chemin rapide dans _listen() (pas de lookup par perso).
+        # Structure : pseudo → {"combat": bool, "echange": bool, "groupe": bool,
+        #                        "mp": bool, "defi": bool, "craft": bool, "pvp": bool}
+        self._char_af_overrides: dict[str, dict[str, bool]] = _decode_af_overrides(
+            cfg.get("char_af_overrides", "")
+        )
+
+        # Fenêtre précédente (pour le raccourci "retour direct")
+        self._prev_hwnd: int | None = None
+
+        # Pseudos exclus du roulement next/prev — persisté dans le registre.
+        _raw_skip = cfg.get("char_skip_names", "[]") or "[]"
+        try:
+            self._char_skip_names: set[str] = set(json.loads(_raw_skip))
+        except Exception:
+            self._char_skip_names: set[str] = set()
+
+        # Popup de bienvenue — affichée une seule fois, sauf si l'utilisateur la réactive
+        self._welcome_shown: bool = cfg.get("welcome_shown", "0") == "1"
 
         self._build_ui()
 
@@ -423,6 +580,10 @@ class App(tk.Tk):
 
         self.refresh_characters()
 
+        # Afficher la popup de bienvenue si pas encore vue
+        if not self._welcome_shown:
+            self.after(200, self._show_welcome_popup)
+
     # ══════════════════════════════════════════════════════════════════════
     # QUIT PROPRE
     # ══════════════════════════════════════════════════════════════════════
@@ -430,12 +591,10 @@ class App(tk.Tk):
     def _quit(self):
         """Fermeture totale du script."""
         # Sauvegarder config
-        _save_config({
-            "shortcut_next": self._shortcut_next,
-            "shortcut_prev": self._shortcut_prev,
-        })
-        # Retirer les hotkeys (restaure le comportement original des touches)
+        self._persist_config()
+        # Retirer les hotkeys et forcer le relâchement des modificateurs (évite Ctrl/Alt collés)
         _unhook_all()
+        _release_modifier_keys()
         # Arrêter la boucle async
         self._running = False
         if self._loop and self._loop.is_running():
@@ -450,8 +609,146 @@ class App(tk.Tk):
         os._exit(0)   # force la terminaison même si des threads traînent
 
     # ══════════════════════════════════════════════════════════════════════
-    # TRAY (icône près de l'horloge)
+    # POPUP DE BIENVENUE
     # ══════════════════════════════════════════════════════════════════════
+
+    def _show_welcome_popup(self):
+        """Affiche la fenêtre de bienvenue et d'avertissement de sécurité.
+        Modale : bloque l'interaction avec la fenêtre principale jusqu'à fermeture.
+        Le bouton de fermeture est verrouillé 30 secondes pour s'assurer que le message est lu.
+        La case 'Ne plus afficher' persiste dans le registre via _persist_config.
+        """
+        TIMER_SECONDS = 30   # durée de verrouillage du bouton
+
+        popup = tk.Toplevel(self)
+        popup.title("Bienvenue dans Dracoon")
+        popup.configure(bg=self.BG)
+        popup.resizable(False, False)
+        popup.grab_set()   # modale
+        popup.focus_force()
+
+        # ── Centrer sur la fenêtre principale ─────────────────────────────
+        self.update_idletasks()
+        pw, ph = 580, 560
+        rx = self.winfo_rootx() + (self.winfo_width()  - pw) // 2
+        ry = self.winfo_rooty() + (self.winfo_height() - ph) // 2
+        popup.geometry(f"{pw}x{ph}+{rx}+{ry}")
+
+        # Polices internes à la popup (légèrement plus grandes que les styles globaux)
+        FONT_TITRE   = ("Segoe UI", 14, "bold")
+        FONT_SECTION = ("Segoe UI", 12, "bold")
+        FONT_BODY    = ("Segoe UI", 11)
+        FONT_BTN     = ("Segoe UI", 12, "bold")
+        WRAPLENGTH   = 500
+
+        pad = tk.Frame(popup, bg=self.BG, padx=28, pady=22)
+        pad.pack(fill="both", expand=True)
+
+        # ── Titre ─────────────────────────────────────────────────────────
+        tk.Label(pad, text="Bienvenue dans Dracoon",
+                 bg=self.BG, fg=self.ACCENT,
+                 font=FONT_TITRE).pack(anchor="w", pady=(0, 16))
+
+        # ── Bloc liens officiels ──────────────────────────────────────────
+        card_links = tk.Frame(pad, bg=self.CARD, padx=18, pady=14)
+        card_links.pack(fill="x", pady=(0, 10))
+
+        tk.Label(card_links,
+                 text="Il n'existe aucun site internet lié à Dracoon.",
+                 bg=self.CARD, fg=self.TEXT,
+                 font=FONT_BODY,
+                 justify="left", wraplength=WRAPLENGTH).pack(anchor="w", pady=(0, 10))
+
+        tk.Label(card_links, text="Seuls liens officiels :",
+                 bg=self.CARD, fg=self.GRAY,
+                 font=FONT_BODY).pack(anchor="w")
+
+        def _link(parent, icon: str, url: str):
+            row = tk.Frame(parent, bg=self.CARD)
+            row.pack(anchor="w", pady=3)
+            tk.Label(row, text=icon, bg=self.CARD,
+                     fg=self.GRAY, font=FONT_BODY).pack(side="left", padx=(0, 8))
+            lbl = tk.Label(row, text=url, bg=self.CARD,
+                           fg=self.BLUE, font=FONT_BODY,
+                           cursor="hand2")
+            lbl.pack(side="left")
+            lbl.bind("<Button-1>", lambda e, u=url: webbrowser.open(u))
+            lbl.bind("<Enter>",    lambda e: lbl.config(fg=self.ACCENT))
+            lbl.bind("<Leave>",    lambda e: lbl.config(fg=self.BLUE))
+
+        _link(card_links, "⌨", APP_GITHUB)
+        _link(card_links, "🐦", APP_TWITTER)
+
+        # ── Bloc avertissement malware ────────────────────────────────────
+        card_warn = tk.Frame(pad, bg="#2a1a1a", padx=18, pady=14)
+        card_warn.pack(fill="x", pady=(0, 16))
+
+        tk.Label(card_warn, text="⚠  Avertissement de sécurité",
+                 bg="#2a1a1a", fg=self.RED,
+                 font=FONT_SECTION).pack(anchor="w", pady=(0, 10))
+
+        tk.Label(card_warn,
+                 text=(
+                     "Si vous n'avez pas téléchargé ce programme depuis les deux liens "
+                     "ci-dessus, ou si vous avez obtenu votre lien depuis un site internet, "
+                     "vous avez probablement téléchargé un malware.\n\n"
+                     "Changez immédiatement l'ensemble de vos mots de passe "
+                     "ainsi que vos données sensibles."
+                 ),
+                 bg="#2a1a1a", fg=self.TEXT,
+                 font=FONT_BODY,
+                 justify="left", wraplength=WRAPLENGTH).pack(anchor="w")
+
+        # ── Bouton "J'ai compris" (verrouillé TIMER_SECONDS secondes) ─────
+        dont_show_var = tk.BooleanVar(value=False)
+
+        def _close():
+            if dont_show_var.get():
+                self._welcome_shown = True
+                self._persist_config()
+            popup.destroy()
+
+        close_btn = tk.Button(pad, text=f"J'ai compris ({TIMER_SECONDS})",
+                              bg=self.GRAY, fg=self.BG,
+                              relief="flat", cursor="arrow",
+                              font=FONT_BTN,
+                              padx=self.S.Bouton.padx_principal,
+                              pady=self.S.Bouton.pady_principal,
+                              activebackground=self.GRAY, activeforeground=self.BG,
+                              state="disabled",
+                              disabledforeground=self.PANEL)
+        close_btn.pack(fill="x", pady=(0, 6))
+
+        # ── Case "Ne plus afficher" ────────────────────────────────────────
+        tk.Checkbutton(pad, text="Ne plus afficher ce message",
+                       variable=dont_show_var,
+                       bg=self.BG, fg=self.GRAY,
+                       selectcolor=self.CARD,
+                       activebackground=self.BG, activeforeground=self.TEXT,
+                       font=FONT_BODY).pack(anchor="w")
+
+        # ── Décompte : met à jour le bouton chaque seconde ─────────────────
+        def _countdown(remaining: int):
+            if remaining > 0:
+                close_btn.config(text=f"J'ai compris ({remaining})")
+                popup.after(1000, _countdown, remaining - 1)
+            else:
+                close_btn.config(
+                    text="J'ai compris",
+                    bg=self.ACCENT, fg=self.BG,
+                    activebackground=self.ACCENT, activeforeground=self.BG,
+                    cursor="hand2", state="normal",
+                    command=_close,
+                )
+
+        popup.after(1000, _countdown, TIMER_SECONDS - 1)
+
+        # La croix de fermeture ne fait rien tant que le bouton est verrouillé
+        def _on_close_attempt():
+            if close_btn["state"] == "normal":
+                _close()
+
+        popup.protocol("WM_DELETE_WINDOW", _on_close_attempt)
 
     def _make_tray_image(self):
         try:
@@ -633,14 +930,19 @@ class App(tk.Tk):
         if not WIN32_OK:
             return
         windows   = get_dofus_windows()
-        known     = {h for h, _ in windows}
-        new_order = [(h, p) for h, p in self._char_order if h in known]
+        win_map   = {h: p for h, p in windows}   # hwnd → pseudo actuel
+        known     = set(win_map.keys())
+        # Conserver l'ordre existant ET mettre à jour le pseudo si le titre a changé
+        new_order = [(h, win_map[h]) for h, _ in self._char_order if h in known]
         existing  = {h for h, _ in new_order}
         for h, p in windows:
             if h not in existing:
                 new_order.append((h, p))
         self._char_order = new_order
         self._rebuild_char_list()
+        # Mettre à jour la liste per-personnage dans l'onglet AutoFocus
+        if hasattr(self, "_af_chars_container"):
+            self._rebuild_af_char_list()
 
     def _rebuild_char_list(self, highlight_idx: int | None = None):
         for w in self._char_inner.winfo_children():
@@ -693,8 +995,30 @@ class App(tk.Tk):
         tk.Label(row, text="●", bg=bg, fg=self.GREEN,
                  font=("Segoe UI", 9)).pack(side="left", padx=6)
 
-        # Bind du début de drag sur la row et ses enfants
-        for w in [row] + list(row.winfo_children()):
+        # ── Pill "Exclure des raccourcis" (UI pure — logique dans _toggle_char_skip) ──
+        skip_btn = tk.Button(
+            row, relief="flat", cursor="hand2",
+            font=self.S.Bouton.font_petit,
+            padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
+        )
+        self._style_skip_btn(skip_btn, active=(pseudo in self._char_skip_names))
+        skip_btn.config(command=lambda b=skip_btn, p=pseudo: self._toggle_char_skip(p, b))
+        skip_btn.pack(side="right", padx=(0, 4))
+
+        # ── Étoile "Personnage principal" — à droite du bouton d'exclusion ──
+        main_btn = tk.Button(
+            row, relief="flat", cursor="hand2",
+            font=self.S.Bouton.font_petit,
+            padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
+        )
+        self._style_main_btn(main_btn, active=(pseudo == self._char_main))
+        main_btn.config(command=lambda b=main_btn, p=pseudo: self._toggle_char_main(p, b))
+        main_btn.pack(side="right", padx=(0, 2))
+
+        # Bind du début de drag sur la row et ses enfants (sauf les deux pills)
+        drag_targets = [row] + [w for w in row.winfo_children()
+                                if w is not skip_btn and w is not main_btn]
+        for w in drag_targets:
             w.bind("<ButtonPress-1>", lambda e, i=idx: self._drag_start(i, e))
 
     def _drag_start(self, idx: int, event):
@@ -747,6 +1071,9 @@ class App(tk.Tk):
             args=(hwnds, lambda m, t: self.after(0, self.log_msg, m, t)),
             daemon=True
         ).start()
+        # Mettre à jour l'ordre dans l'onglet AutoFocus
+        if hasattr(self, "_af_chars_container"):
+            self._rebuild_af_char_list()
 
     # ══════════════════════════════════════════════════════════════════════
     # ONGLET RACCOURCIS
@@ -765,27 +1092,23 @@ class App(tk.Tk):
 
         self._next_entry = self._shortcut_row(
             f, "▶  Fenêtre suivante",
-            "Passe au personnage suivant",
+            "Passe au personnage suivant (exclut les fenêtres marquées)",
             self._shortcut_next, "next")
 
         self._prev_entry = self._shortcut_row(
             f, "◀  Fenêtre précédente",
-            "Revient au personnage précédent",
+            "Revient au personnage précédent (exclut les fenêtres marquées)",
             self._shortcut_prev, "prev")
 
-        # Bouton Appliquer — side=bottom pour toujours visible
-        btn_row = tk.Frame(f, bg=self.BG, pady=8)
-        btn_row.pack(side="bottom", fill="x", padx=16)
+        self._back_entry = self._shortcut_row(
+            f, "↩  Retour direct",
+            "Revient à la dernière fenêtre active (idéal après un échange)",
+            self._shortcut_back, "back")
 
-        self._shortcut_status = tk.Label(btn_row, text="", bg=self.BG,
-                                          fg=self.GRAY, font=("Segoe UI", 9))
-        self._shortcut_status.pack(side="left")
-
-        tk.Button(btn_row, text="Appliquer", bg=self.ACCENT, fg=self.BG,
-                  relief="flat", cursor="hand2",
-                  font=self.S.Bouton.font_principal,
-                  padx=self.S.Bouton.padx_principal, pady=self.S.Bouton.pady_principal,
-                  command=self._apply_shortcuts).pack(side="right")
+        self._main_entry = self._shortcut_row(
+            f, "★  Personnage principal",
+            "Focus direct sur le personnage principal",
+            self._shortcut_main, "main")
 
         if not KEYBOARD_OK:
             warn = tk.Frame(f, bg="#2a1a1a", padx=12, pady=10)
@@ -839,11 +1162,23 @@ class App(tk.Tk):
             self._next_entry.delete(0, "end")
             self._next_entry.insert(0, "Aucun")
             self._next_entry.config(fg=self.GRAY)
-        else:
+        elif which == "prev":
             self._shortcut_prev = self.NO_SHORTCUT
             self._prev_entry.delete(0, "end")
             self._prev_entry.insert(0, "Aucun")
             self._prev_entry.config(fg=self.GRAY)
+        elif which == "main":
+            self._shortcut_main = self.NO_SHORTCUT
+            self._main_entry.delete(0, "end")
+            self._main_entry.insert(0, "Aucun")
+            self._main_entry.config(fg=self.GRAY)
+        else:
+            self._shortcut_back = self.NO_SHORTCUT
+            self._back_entry.delete(0, "end")
+            self._back_entry.insert(0, "Aucun")
+            self._back_entry.config(fg=self.GRAY)
+        # Application immédiate — pas besoin de cliquer sur "Appliquer"
+        self._apply_shortcuts()
 
     def _start_capture(self, entry: tk.Entry, which: str):
         entry.delete(0, "end")
@@ -866,18 +1201,22 @@ class App(tk.Tk):
                 entry.config(fg=self.ACCENT)
                 if which == "next":
                     self._shortcut_next = combo
-                else:
+                elif which == "prev":
                     self._shortcut_prev = combo
+                elif which == "main":
+                    self._shortcut_main = combo
+                else:
+                    self._shortcut_back = combo
                 entry.unbind("<KeyPress>")
                 self.focus()
+                # Application immédiate — pas besoin de cliquer sur "Appliquer"
+                self._apply_shortcuts()
+            return "break"  # empêche l'insertion naturelle de la touche dans le Entry
 
         entry.bind("<KeyPress>", on_key)
 
     def _apply_shortcuts(self, silent: bool = False):
         if not KEYBOARD_OK:
-            if not silent:
-                self._shortcut_status.config(
-                    text="Module 'keyboard' non chargé.", fg=self.RED)
             return
         try:
             _unhook_all()
@@ -885,39 +1224,140 @@ class App(tk.Tk):
                 keyboard.add_hotkey(self._shortcut_next, self._focus_next)
             if self._shortcut_prev:
                 keyboard.add_hotkey(self._shortcut_prev, self._focus_prev)
+            if self._shortcut_back:
+                keyboard.add_hotkey(self._shortcut_back, self._focus_back)
+            if self._shortcut_main:
+                keyboard.add_hotkey(self._shortcut_main, self._focus_main)
+            self._persist_config()
+        except Exception:
+            pass
 
-            parts = []
-            if self._shortcut_next:
-                parts.append(f"[{self._shortcut_next}] suivant")
-            if self._shortcut_prev:
-                parts.append(f"[{self._shortcut_prev}] précédent")
+    def _focus_main(self):
+        """Focus direct sur le personnage principal.
+        Prioritaire sur l'exclusion du roulement : le perso principal est toujours atteignable.
+        """
+        if not is_dofus_foreground():
+            return
+        if not self._char_main:
+            return
+        if WIN32_OK:
+            try:
+                fg = win32gui.GetForegroundWindow()
+                if fg:
+                    self._prev_hwnd = fg
+            except Exception:
+                pass
+        focus_dofus_window(self._char_main)
 
-            if not silent:
-                self._shortcut_status.config(
-                    text="✓  " + "   ".join(parts) if parts else "Aucun raccourci actif.",
-                    fg=self.GREEN if parts else self.GRAY)
+    def _focus_next(self):
+        if is_dofus_foreground():
+            self._cycle(+1)
 
-            # Sauvegarder immédiatement
-            _save_config({
-                "shortcut_next": self._shortcut_next,
-                "shortcut_prev": self._shortcut_prev,
-            })
-        except Exception as e:
-            if not silent:
-                self._shortcut_status.config(text=f"Erreur : {e}", fg=self.RED)
+    def _focus_prev(self):
+        if is_dofus_foreground():
+            self._cycle(-1)
 
-    def _focus_next(self): self._cycle(+1)
-    def _focus_prev(self): self._cycle(-1)
+    def _focus_back(self):
+        """Retour direct à la fenêtre active avant le dernier switch."""
+        if not is_dofus_foreground():
+            return
+        if self._prev_hwnd and WIN32_OK:
+            try:
+                if win32gui.IsWindow(self._prev_hwnd):
+                    focus_window(self._prev_hwnd)
+                    return
+            except Exception:
+                pass
+        # Fallback : cycle -1
+        self._cycle(-1)
 
     def _cycle(self, direction: int):
         if not self._char_order:
             self.refresh_characters()
         if not self._char_order:
             return
+
+        # Construire la liste de roulement (exclure les pseudos marqués)
+        cycle_order = [(i, h, p) for i, (h, p) in enumerate(self._char_order)
+                       if p not in self._char_skip_names]
+        if not cycle_order:
+            cycle_order = [(i, h, p) for i, (h, p) in enumerate(self._char_order)]
+
         fg  = win32gui.GetForegroundWindow() if WIN32_OK else None
-        cur = next((i for i, (h, _) in enumerate(self._char_order) if h == fg), None)
-        cur = 0 if cur is None else (cur + direction) % len(self._char_order)
-        focus_window(self._char_order[cur][0])
+
+        # Mémoriser la fenêtre courante avant de changer
+        if fg:
+            self._prev_hwnd = fg
+
+        # Trouver la position courante dans cycle_order
+        cur_pos = next((pos for pos, (_, h, _) in enumerate(cycle_order) if h == fg), None)
+        if cur_pos is None:
+            new_pos = 0
+        else:
+            new_pos = (cur_pos + direction) % len(cycle_order)
+
+        focus_window(cycle_order[new_pos][1])
+
+    # ── Persistance centralisée ───────────────────────────────────────────────
+
+    def _persist_config(self):
+        """Point unique de sauvegarde de la configuration dans le registre."""
+        _save_config(_build_config(
+            self._shortcut_next,
+            self._shortcut_prev,
+            self._shortcut_back,
+            self._char_af_overrides,
+            self._shortcut_main,
+            self._char_main,
+            self._welcome_shown,
+            self._char_skip_names,
+        ))
+
+    # ── Gestion des exclusions de roulement ───────────────────────────────────
+
+    def _toggle_char_skip(self, pseudo: str, btn: tk.Button):
+        """Bascule l'exclusion du roulement pour un personnage et met à jour le bouton."""
+        if pseudo in self._char_skip_names:
+            self._char_skip_names.discard(pseudo)
+            self._style_skip_btn(btn, active=False)
+        else:
+            self._char_skip_names.add(pseudo)
+            self._style_skip_btn(btn, active=True)
+        self._persist_config()
+
+    def _style_skip_btn(self, btn: tk.Button, active: bool):
+        """Applique le style actif/inactif au bouton d'exclusion."""
+        if active:
+            btn.config(text="⊗  Exclure des raccourcis", bg="#2d1515",
+                       fg=self.RED, activebackground="#2d1515", activeforeground=self.RED)
+        else:
+            btn.config(text="○  Exclure des raccourcis", bg="#252b3b",
+                       fg=self.GRAY, activebackground="#252b3b", activeforeground=self.GRAY)
+
+    def _toggle_char_main(self, pseudo: str, btn: tk.Button):
+        """Définit ou retire le statut de personnage principal.
+        Un seul principal possible : cliquer sur un autre transfère l'étoile.
+        Cliquer sur l'étoile active la retire (plus de principal).
+        Reconstruit la liste pour mettre à jour toutes les étoiles.
+        """
+        if self._char_main == pseudo:
+            # Déjà principal → retirer
+            self._char_main = None
+        else:
+            # Nouveau principal → remplace l'ancien sans reconstruct partiel
+            self._char_main = pseudo
+        self._persist_config()
+        # Rebuild pour mettre à jour l'étoile de l'ancien principal (si existant)
+        self._rebuild_char_list()
+
+    def _style_main_btn(self, btn: tk.Button, active: bool):
+        """Applique le style actif/inactif au bouton étoile du personnage principal."""
+        if active:
+            btn.config(text="★", bg="#252b3b",
+                       fg=self.ACCENT, activebackground="#252b3b", activeforeground=self.ACCENT)
+        else:
+            btn.config(text="☆", bg="#252b3b",
+                       fg=self.GRAY, activebackground="#252b3b", activeforeground=self.GRAY)
 
     # ══════════════════════════════════════════════════════════════════════
     # ONGLET AUTOFOCUS
@@ -935,25 +1375,65 @@ class App(tk.Tk):
         tk.Label(top, text="Choisissez quand passer la fenêtre au premier plan",
                  bg=self.BG, fg=self.GRAY, font=self.S.Info.font).pack(anchor="w")
 
-        # ── Boutons de type (uniformes, jaune actif) ──────────────────────
+        # ── Boutons de type globaux (défaut pour tous les persos sans surcharge) ──
         ff = tk.Frame(f, bg=self.BG, pady=4)
         ff.pack(fill="x", padx=16)
 
+        tk.Label(ff, text="Paramètres globaux",
+                 bg=self.BG, fg=self.TEXT, font=self.S.EnTete.font).pack(anchor="w")
+        tk.Label(ff, text="S'appliquent à tous les personnages",
+                 bg=self.BG, fg=self.GRAY, font=self.S.Info.font).pack(anchor="w", pady=(0, 6))
+
+        btn_row1 = tk.Frame(ff, bg=self.BG)
+        btn_row1.pack(anchor="w", pady=(0, 3))
+        btn_row2 = tk.Frame(ff, bg=self.BG)
+        btn_row2.pack(anchor="w")
+
         self.type_vars: dict[str, tk.BooleanVar] = {}
         self.type_btns: dict[str, tk.Button]     = {}
-        for key, label in [("combat", "⚔  Combat"), ("echange", "🔄  Échange"),
-                            ("groupe", "👥  Groupe"), ("mp",     "💬  MP")]:
-            var = tk.BooleanVar(value=True)
-            self.type_vars[key] = var
-            btn = tk.Button(ff, text=label,
-                            bg=self.ACCENT, fg=self.BG,
-                            font=self.S.Bouton.font_type_notif,
-                            relief="flat", cursor="hand2",
-                            padx=self.S.Bouton.padx_type_notif,
-                            pady=self.S.Bouton.pady_type_notif,
-                            command=lambda k=key: self._toggle_type(k))
-            btn.pack(side="left", padx=3)
-            self.type_btns[key] = btn
+
+        # Ligne 1 : combat, échange, groupe, craft
+        ROW1 = [("combat",  "⚔  Combat"), ("echange", "🔄  Échange"),
+                ("groupe",  "👥  Groupe"), ("craft",   "🔨  Craft")]
+        # Ligne 2 : mp, défi, pvp
+        ROW2 = [("mp",      "💬  MP"),    ("defi",    "🏆  Défi"),
+                ("pvp",     "🛡  PVP")]
+
+        for row_frame, entries in [(btn_row1, ROW1), (btn_row2, ROW2)]:
+            for key, label in entries:
+                var = tk.BooleanVar(value=True)
+                self.type_vars[key] = var
+                btn = tk.Button(row_frame, text=label,
+                                bg=self.ACCENT, fg=self.BG,
+                                font=self.S.Bouton.font_type_notif,
+                                relief="flat", cursor="hand2",
+                                padx=self.S.Bouton.padx_type_notifnobold,
+                                pady=self.S.Bouton.pady_type_notifnobold,
+                                command=lambda k=key: self._toggle_type(k))
+                btn.pack(side="left", padx=3)
+                self.type_btns[key] = btn
+
+        # ── Séparateur ────────────────────────────────────────────────────
+        tk.Frame(f, bg=self.CARD, height=1).pack(fill="x", padx=16, pady=(10, 0))
+
+        # ── Personnalisation par personnage ───────────────────────────────
+        per_top = tk.Frame(f, bg=self.BG, pady=8)
+        per_top.pack(fill="x", padx=16)
+
+        tk.Label(per_top, text="Personnalisation par personnage",
+                 bg=self.BG, fg=self.TEXT, font=self.S.EnTete.font).pack(side="left")
+        tk.Button(per_top, text="↻  Actualiser", bg=self.PANEL, fg=self.TEXT,
+                  relief="flat", cursor="hand2",
+                  font=self.S.Bouton.font_petit,
+                  padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
+                  command=self.refresh_characters).pack(side="right")
+
+        tk.Label(f, text="Cliquez sur une icône pour désactiver ce type pour ce personnage uniquement",
+                 bg=self.BG, fg=self.GRAY, font=self.S.Info.font).pack(anchor="w", padx=16)
+
+        # Container des cartes per-personnage (scrollable si nécessaire)
+        self._af_chars_container = tk.Frame(f, bg=self.BG)
+        self._af_chars_container.pack(fill="x", padx=16, pady=(4, 0))
 
         # ── Mode debug (contrôle aussi logs + stats) ──────────────────────
         ctrl = tk.Frame(f, bg=self.BG, pady=6)
@@ -1033,21 +1513,165 @@ class App(tk.Tk):
         lbl.pack(anchor="w")
         return lbl
 
-    def _toggle_type(self, key: str):
-        var = self.type_vars[key]
-        btn = self.type_btns[key]
-        if var.get():
-            var.set(False)
-            btn.config(bg=self.CARD, fg=self.GRAY)
+    def _is_type_fully_active(self, type_key: str) -> bool:
+        """Retourne True si type_vars est ON et aucun personnage n'a ce type désactivé localement.
+        Détermine la couleur du bouton global (jaune = tous actifs, gris = au moins un inactif).
+        """
+        if not self.type_vars[type_key].get():
+            return False
+        for pseudo, overrides in self._char_af_overrides.items():
+            if overrides.get(type_key) is False:
+                return False
+        return True
+
+    def _update_global_btn_style(self, type_key: str):
+        """Met à jour l'apparence du bouton global selon _is_type_fully_active."""
+        btn = self.type_btns[type_key]
+        if self._is_type_fully_active(type_key):
+            btn.config(bg=self.ACCENT, fg=self.BG,
+                       activebackground=self.ACCENT, activeforeground=self.BG)
         else:
-            var.set(True)
-            btn.config(bg=self.ACCENT, fg=self.BG)
+            btn.config(bg=self.CARD, fg=self.GRAY,
+                       activebackground=self.CARD, activeforeground=self.GRAY)
+
+    def _toggle_type(self, key: str):
+        """Bascule le type global.
+
+        Règle liée global ↔ per-perso :
+        • Bouton global jaune (tous actifs) → désactive globalement (type_vars False),
+          les surcharges per-perso pour ce type sont supprimées (devenues inutiles).
+        • Bouton global gris (au moins un inactif, ou global OFF) → réactive TOUT :
+          type_vars True + toutes surcharges per-perso pour ce type effacées.
+        """
+        fully_active = self._is_type_fully_active(key)
+
+        if fully_active:
+            # Tout était actif → désactiver globalement
+            self.type_vars[key].set(False)
+            # Nettoyer les éventuelles surcharges per-perso pour ce type
+            for overrides in self._char_af_overrides.values():
+                overrides.pop(key, None)
+            # Retirer les entrées vides
+            self._char_af_overrides = {p: o for p, o in self._char_af_overrides.items() if o}
+        else:
+            # Au moins un inactif → tout réactiver (efface toutes les surcharges pour ce type)
+            self.type_vars[key].set(True)
+            for overrides in list(self._char_af_overrides.values()):
+                overrides.pop(key, None)
+            self._char_af_overrides = {p: o for p, o in self._char_af_overrides.items() if o}
+
+        self._update_global_btn_style(key)
+        self._persist_config()
 
         any_active = any(v.get() for v in self.type_vars.values())
         if any_active and not self._running:
             self._start()
         elif not any_active and self._running:
             self._stop()
+
+        # Synchroniser les icônes per-personnage
+        if hasattr(self, "_af_chars_container"):
+            self._rebuild_af_char_list()
+
+    # ── AutoFocus per-personnage ──────────────────────────────────────────
+
+    def _rebuild_af_char_list(self):
+        """Reconstruit les cartes de personnalisation per-personnage (onglet AutoFocus)."""
+        for w in self._af_chars_container.winfo_children():
+            w.destroy()
+
+        if not self._char_order:
+            tk.Label(self._af_chars_container,
+                     text="Aucun personnage détecté — actualisez l'onglet Personnages",
+                     bg=self.BG, fg=self.GRAY, font=self.S.Info.font).pack(anchor="w", pady=4)
+            return
+
+        for _, pseudo in self._char_order:
+            self._create_af_char_row(pseudo)
+
+    def _create_af_char_row(self, pseudo: str):
+        """Crée une carte de personnalisation autofocus pour un personnage.
+
+        Deux états pour chaque icône :
+          • Icône jaune (ACCENT) = actif pour ce perso (suit le global ON, ou pas de surcharge)
+          • Icône gris  (GRAY)   = désactivé localement pour ce perso
+        Fond du bouton toujours #252b3b. Pas d'élément conditionnel → layout stable.
+        """
+        override = self._char_af_overrides.get(pseudo)  # dict {type_key: False} ou None
+
+        card = tk.Frame(self._af_chars_container, bg=self.CARD, padx=10, pady=5)
+        card.pack(fill="x", pady=2)
+
+        # ── Nom du personnage (pas de width fixe → pas de coupure) ────────
+        tk.Label(card, text=pseudo, bg=self.CARD,
+                 fg=self.TEXT, font=self.S.Bouton.font_principal,
+                 anchor="w").pack(side="left", padx=(0, 10))
+
+        # ── 4 icônes toujours présentes, fond fixe, icône jaune/gris ──────
+        btn_frame = tk.Frame(card, bg=self.CARD)
+        btn_frame.pack(side="right")
+
+        TYPE_ICONS = [("combat", "⚔"), ("echange", "🔄"), ("groupe", "👥"), ("craft", "🔨"),
+                      ("mp", "💬"), ("defi", "🏆"), ("pvp", "🛡")]
+        for type_key, icon in TYPE_ICONS:
+            locally_disabled = (override is not None and override.get(type_key) is False)
+            global_active    = self.type_vars[type_key].get()
+            # Actif = global ON et pas désactivé localement
+            is_active = global_active and not locally_disabled
+
+            btn = tk.Button(btn_frame, text=icon,
+                            font=self.S.Bouton.font_type_notifnobold,
+                            padx=5, pady=2,
+                            relief="flat", cursor="hand2")
+            self._style_af_char_btn(btn, is_active)
+            btn.config(command=lambda p=pseudo, k=type_key, b=btn:
+                       self._toggle_char_af_type(p, k, b))
+            btn.pack(side="left", padx=1)
+
+    def _style_af_char_btn(self, btn: tk.Button, is_active: bool):
+        """Style d'une icône per-personnage.
+
+        Fond toujours #252b3b.
+        is_active=True  → icône jaune (ACCENT)
+        is_active=False → icône gris  (GRAY)
+        """
+        fg = self.ACCENT if is_active else self.GRAY
+        btn.config(bg="#252b3b", fg=fg,
+                   activebackground="#252b3b", activeforeground=fg)
+
+    def _toggle_char_af_type(self, pseudo: str, type_key: str, _btn: tk.Button):
+        """Bascule un type de notification pour un personnage spécifique.
+
+        Logique liée :
+        • Icône jaune (is_active=True)  → désactiver localement (stocke False).
+          type_vars reste True ; le bouton global passe en gris (plus "tous actifs").
+        • Icône gris  (is_active=False) → retirer la surcharge locale si elle existe.
+          Si le global est OFF, cliquer n'a aucun effet (l'état vient du global).
+          Si tous les persos sont à nouveau actifs, le bouton global repasse en jaune.
+        Le dict de surcharge ne stocke que les types désactivés (valeur False).
+        """
+        override = self._char_af_overrides.get(pseudo)
+        locally_disabled = (override is not None and override.get(type_key) is False)
+        global_active    = self.type_vars[type_key].get()
+        is_active        = global_active and not locally_disabled
+
+        if is_active:
+            # Actif → désactiver localement
+            if override is None:
+                override = {}
+                self._char_af_overrides[pseudo] = override
+            override[type_key] = False
+        elif locally_disabled:
+            # Désactivé localement (global ON) → retirer la surcharge
+            del override[type_key]
+            if not override:
+                del self._char_af_overrides[pseudo]
+        # else : global OFF → rien à faire (ne pas stocker de surcharge inutile)
+
+        # Mettre à jour le bouton global (pas de changement de type_vars)
+        self._update_global_btn_style(type_key)
+        self._persist_config()
+        self._rebuild_af_char_list()
 
     def log_msg(self, msg: str, tag: str = "info"):
         ts = datetime.now().strftime("%H:%M:%S")
@@ -1183,8 +1807,8 @@ class App(tk.Tk):
 
                             matched_type  = None
                             matched_emoji = "🔔"
-                            for type_key, pattern, emoji in NOTIF_TYPES:
-                                if pattern.search(notif_body):
+                            for type_key, patterns, emoji in NOTIF_TYPES:
+                                if any(p.search(notif_body) for p in patterns):
                                     matched_type  = type_key
                                     matched_emoji = emoji
                                     break
@@ -1195,10 +1819,20 @@ class App(tk.Tk):
                                         f"[debug] Type inconnu : {repr(notif_body)}", "debug")
                                 continue
 
+                            # ── Vérification autofocus ────────────────────────────────
+                            # 1. type_vars[type] False = globalement désactivé pour TOUS.
                             if not self.type_vars[matched_type].get():
                                 self.after(0, self.log_msg,
-                                    f"[{matched_type}] ignoré (désactivé) — {pseudo}", "dim")
+                                    f"[{matched_type}] ignoré (désactivé global) — {pseudo}", "dim")
                                 continue
+
+                            # 2. Surcharge per-personnage (chemin rapide si dict vide).
+                            if self._char_af_overrides:
+                                _ov = self._char_af_overrides.get(pseudo)
+                                if _ov is not None and _ov.get(matched_type) is False:
+                                    self.after(0, self.log_msg,
+                                        f"[{matched_type}] ignoré (désactivé pour {pseudo})", "dim")
+                                    continue
 
                             self._n_matches += 1
                             self.after(0, self.lbl_matches.config, {"text": str(self._n_matches)})
@@ -1206,6 +1840,15 @@ class App(tk.Tk):
                             self.after(0, self.log_msg,
                                 f"{matched_emoji} [{matched_type.upper()}] {pseudo} — {notif_body}",
                                 f"type_{matched_type}")
+
+                            # Mémoriser la fenêtre courante avant le switch auto
+                            if WIN32_OK:
+                                try:
+                                    _fg = win32gui.GetForegroundWindow()
+                                    if _fg:
+                                        self._prev_hwnd = _fg
+                                except Exception:
+                                    pass
 
                             ok, detail = focus_dofus_window(pseudo)
                             if ok:
@@ -1282,8 +1925,8 @@ class App(tk.Tk):
             lbl.bind("<Enter>",    lambda e: lbl.config(fg=self.ACCENT))
             lbl.bind("<Leave>",    lambda e: lbl.config(fg=self.BLUE))
 
-        _link_row(card_links, "⌨", "GitHub", APP_GITHUB)
-        _link_row(card_links, "🐦", "Twitter/X",  APP_TWITTER)
+        _link_row(card_links, "⌨", "GitHub : https://github.com/Slyss42/Dracoon", APP_GITHUB)
+        _link_row(card_links, "🐦", "Twitter/X : https://x.com/Slyss42",  APP_TWITTER)
 
         # ── Carte mentions légales ────────────────────────────────────────
         card_legal = tk.Frame(f, bg=self.CARD, padx=16, pady=12)
@@ -1293,7 +1936,65 @@ class App(tk.Tk):
                  fg=self.GRAY, font=self.S.Info.font).pack(anchor="w", pady=(0, 6))
         tk.Label(card_legal, text=APP_LEGAL, bg=self.CARD,
                  fg=self.TEXT, font=self.S.Info.font,
-                 justify="left", wraplength=520).pack(anchor="w")
+                 justify="left", wraplength=620).pack(anchor="w")
+
+        # ── Carte réinitialisation ─────────────────────────────────────────
+        card_reset = tk.Frame(f, bg=self.CARD, padx=16, pady=12)
+        card_reset.pack(fill="x", padx=16, pady=(2, 16))
+
+        tk.Label(card_reset, text="Réinitialiser les paramètres", bg=self.CARD,
+                 fg=self.GRAY, font=self.S.Info.font).pack(anchor="w", pady=(0, 6))
+        tk.Label(card_reset,
+                 text="Efface les raccourcis, le personnage principal, les exclusions "
+                      "et réaffiche le message de bienvenue au prochain lancement.",
+                 bg=self.CARD, fg=self.GRAY, font=self.S.Info.font,
+                 justify="left", wraplength=620).pack(anchor="w", pady=(0, 8))
+        tk.Button(card_reset, text="🗑  Réinitialiser",
+                  bg="#2d1515", fg=self.RED,
+                  relief="flat", cursor="hand2",
+                  font=self.S.Bouton.font_petit,
+                  padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
+                  activebackground="#2d1515", activeforeground=self.RED,
+                  command=self._reset_config).pack(anchor="w")
+
+    def _reset_config(self):
+        """Réinitialise l'ensemble de la configuration dans le registre et en mémoire.
+        Supprime : raccourcis clavier, personnage principal, exclusions du roulement,
+        surcharges autofocus per-perso, et flag 'bienvenue déjà affiché'.
+        Le message de bienvenue réapparaîtra au prochain lancement.
+        """
+        # Remettre à zéro en mémoire
+        self._shortcut_next    = None
+        self._shortcut_prev    = None
+        self._shortcut_back    = None
+        self._shortcut_main    = None
+        self._char_main        = None
+        self._char_skip_names  = set()
+        self._char_af_overrides = {}
+        self._welcome_shown    = False
+
+        # Désactiver les hotkeys actifs
+        _unhook_all()
+
+        # Persister l'état vide dans le registre
+        self._persist_config()
+
+        # Reconstruire la liste des personnages pour effacer les étoiles et exclusions
+        self._rebuild_char_list()
+
+        # Mettre à jour les entrées de l'onglet Raccourcis si déjà construites
+        for attr, entry in [("_next_entry", self._next_entry),
+                            ("_prev_entry", self._prev_entry),
+                            ("_back_entry", self._back_entry),
+                            ("_main_entry", self._main_entry)]:
+            try:
+                entry.delete(0, "end")
+                entry.insert(0, "Aucun")
+                entry.config(fg=self.GRAY)
+            except Exception:
+                pass
+
+        self.log_msg("Paramètres réinitialisés.", "ok")
 
 
 # ══════════════════════════════════════════════════════════════════════════════

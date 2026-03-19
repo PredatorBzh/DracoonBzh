@@ -34,7 +34,7 @@ import sys as _sys
 if getattr(_sys, "frozen", False):
     ICON_PATH = os.path.join(_sys._MEIPASS, "icon.ico")
 else:
-    ICON_PATH = os.path.join(os.path.expanduser("~"), "Desktop", "icon.ico")
+    ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
 
 
 

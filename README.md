@@ -27,15 +27,55 @@ Vidéo de présentation :
 * Pour les personnes en situation de handicap
 ---
 
-# Installation
+# Pré-requis
+* Activer les notifications sur vos comptes Dofus (option en jeu > général > notification en arrière plan) [screen](https://github.com/Slyss42/Dracoon/blob/46b5f9711967baa45749e804de905726fff89c6a/activer-notification-ig.png)
+* Activer les notifications Windows (Paramètre > Système > Actions et notifications > "activer"
+* Désactiver "autoriser les notifications à émettre des sons" (ou le faire spécifiquement pour Dofus si vous voulez garder le son pour les autres applications) [screen](https://github.com/Slyss42/Dracoon/blob/7fae9b3246307ed8bc5035d0d623450cbc735c73/activer-notification-windows1.png)
+* Cliquer sur l'application "Dofus 1" pour désactiver l'affichage des bannières. Vous pouvez donc désactiver le son des notifications de Dofus à cet endroit (si vous préférez avoir le son des autres notifications) [screen](https://github.com/Slyss42/Dracoon/blob/ce4e21739dc6cbe9c16bf4d05bd57da43d9ef453/activer-notification-windows2.png)
 
-1. Télécharger la dernière version dans la section **Releases** (à droite sur Github). Vous pouvez téléchargez uniquement le .exe
-2. Lancer le fichier `.exe`.
-3. Activer les notifications sur vos comptes Dofus (option en jeu > général > notification en arrière plan) [screen](https://github.com/Slyss42/Dracoon/blob/46b5f9711967baa45749e804de905726fff89c6a/activer-notification-ig.png)
-4. Activer les notifications Windows (Paramètre > Système > Actions et notifications > "activer"
-5. Désactiver "autoriser les notifications à émettre des sons" (ou le faire spécifiquement pour Dofus si vous voulez garder le son pour les autres applications) [screen](https://github.com/Slyss42/Dracoon/blob/7fae9b3246307ed8bc5035d0d623450cbc735c73/activer-notification-windows1.png)
-6. Cliquer sur l'application "Dofus 1" pour désactiver l'affichage des bannières. Vous pouvez donc désactiver le son des notifications de Dofus à cet endroit (si vous préférez avoir le son des autres notifications) [screen](https://github.com/Slyss42/Dracoon/blob/ce4e21739dc6cbe9c16bf4d05bd57da43d9ef453/activer-notification-windows2.png)
+---
+# Installation depuis le code
+Prérequis :
+* Python 3.10 minimum [(site officiel)](https://www.python.org/downloads/)
+* Installer les dépendances : (ouvrir l'invite de commande, copier/coller le texte ci-dessous, puis presser enter)
+``` 
+pip install pywin32 winsdk keyboard pystray Pillow
+```
+* Lancement pour test : (ouvrir l'invite de commande aller jusqu'au dossier ou se trouve le script et taper "python Dracoon.pyw). OU : taper "python" et glisser le .pyw dans l'invite de commande + presser enter
+```
+C:\CHEMIN\VERS\LE\DOSSIER>python Dracoon.pyw
+```
  
+* Build : (passer le .pyw en .exe)
+```
+PyInstaller --onefile --noconsole --clean ^
+--icon "C:\CHEMIN\VERS\LE\DOSSIER\icon.ico" ^
+--add-data "C:\CHEMIN\VERS\LE\DOSSIER\icon.ico;." ^
+--hidden-import win32gui ^
+--hidden-import win32con ^
+--hidden-import win32api ^
+--hidden-import win32process ^
+--hidden-import win32com ^
+--hidden-import pythoncom ^
+--hidden-import winsdk.windows.ui.notifications ^
+--hidden-import winsdk.windows.ui.notifications.management ^
+--hidden-import winsdk.windows.foundation ^
+--hidden-import pystray._win32 ^
+--hidden-import PIL ^
+--hidden-import PIL.Image ^
+--hidden-import PIL.ImageDraw ^
+--hidden-import PIL.ImageTk ^
+--hidden-import keyboard ^
+""C:\CHEMIN\VERS\LE\DOSSIER\Dracoon.pyw"
+```
+* Lancer le fichier `.exe`.
+
+
+---
+# Installation rapide
+* Télécharger la dernière version dans la section **Releases** (à droite sur Github). Vous pouvez téléchargez uniquement le .exe
+* Lancer le fichier `.exe`.
+
 ---
 
 # FAQ
@@ -67,14 +107,3 @@ Je suis **ouvert aux retours et aux suggestions d’amélioration** :
 * si le système n'est pas intuitif
 
 N’hésitez pas à **ouvrir une issue ou proposer des améliorations sur twitter @Slyss42**.
-
----
-# Fonctionnement technique de l'auto-focus
-
-Plusieurs proposition d'auto-focus existent/ont existés, mais elles reposent souvent sur  la **lecture de paquets réseau** : plus rapide,  mais interdit par les CGU (et parfois difficile à maintenir). Égalament, ces outils contiennent parfois des macros, elles-aussi interditent par les CGU.
-
-L'auto-focus de Dracoon repose uniquement sur l’analyse des **notifications du jeu**. Voici le fonctionnement global :
-* Windows stocke les notifications dans un fichier se trouvant sur votre ordinateur
-* Dès qu'il est activé, Dracoon lit ce fichier en boucle et vérifie si il y a une nouvelle notification
-* Si le texte de la notification est connu de Dracoon ("de joeur" pour les combat, "te propose de faire un échange" pour les échange,...) alors, Dracoon regarde le titre de la notification (correspondant au personnage qui recoit la notification et donc, l'action)
-* Si le compte existe, Dracoon se charge de mettre ce compte au premier plan

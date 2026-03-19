@@ -338,32 +338,39 @@ NOTIF_TYPES = [
     # ── Combat : invitation à jouer (tour par tour) ──────────────────────────
     ("combat", [
         re.compile(r"de jouer",                             re.IGNORECASE),  # FR
-        # re.compile(r"<texte anglais combat>",             re.IGNORECASE),  # EN
+        re.compile(r"turn to play",                         re.IGNORECASE),  # EN
+        re.compile(r"Le toca jugar a",                      re.IGNORECASE),  # ES
     ], "⚔️"),
 
     # ── Échange : proposition d'échange ──────────────────────────────────────
     ("echange", [
         re.compile(r"te propose de faire un échange",       re.IGNORECASE),  # FR
-        # re.compile(r"<texte anglais échange>",            re.IGNORECASE),  # EN
+        re.compile(r"offers a trade",                       re.IGNORECASE),  # EN
+        re.compile(r"te propone realizar un intercambio",   re.IGNORECASE),  # ES
     ], "🔄"),
 
     # ── Groupe : invitation à rejoindre un groupe ou une guilde ──────────────
     ("groupe", [
-        re.compile(r"t['']invite .+ rejoindre son groupe",  re.IGNORECASE),  # FR groupe
-        re.compile(r"t['']invite .+ rejoindre sa guilde",   re.IGNORECASE),  # FR guilde
-        # re.compile(r"<texte anglais groupe>",             re.IGNORECASE),  # EN
+        re.compile(r"t['']invite .+rejoindre son groupe",  re.IGNORECASE),  # FR groupe
+        re.compile(r"t['']invite .+rejoindre sa guilde",   re.IGNORECASE),  # FR guilde
+        re.compile(r"You are invited to join .+'s group",   re.IGNORECASE),  # EN groupe
+        re.compile(r"invites you to join the .+guild",   re.IGNORECASE),  # EN groupe
+        re.compile(r"te invita a unirte a su grupo",   re.IGNORECASE),  # ES groupe
+        re.compile(r"te invita a unirte a su gremio",   re.IGNORECASE),  # ES groupe
     ], "👥"),
 
     # ── MP : message privé ────────────────────────────────────────────────────
     ("mp", [
         re.compile(r"^de ",                                 re.IGNORECASE),  # FR
-        # re.compile(r"<texte anglais MP>",                 re.IGNORECASE),  # EN
+        re.compile(r"^from ",                               re.IGNORECASE),  # FR
+        re.compile(r"^desde ",                               re.IGNORECASE),  # FR
     ], "💬"),
 
     # ── Défi : invitation à un duel ───────────────────────────────────────────
     ("defi", [
         re.compile(r"te défie",                             re.IGNORECASE),  # FR
-        # re.compile(r"<texte anglais défi>",               re.IGNORECASE),  # EN
+        re.compile(r"challenges you",                       re.IGNORECASE),  # EN
+        re.compile(r"te desafía",                           re.IGNORECASE),  # ES
     ], "🏆"),
 
     # ── Craft : atelier / artisan / fabrication terminée ─────────────────────
@@ -371,13 +378,21 @@ NOTIF_TYPES = [
         re.compile(r"fait appel à tes talents d.artisan",   re.IGNORECASE),  # FR artisan
         re.compile(r"rejoindre son atelier",                re.IGNORECASE),  # FR atelier
         re.compile(r"tous les objets ont été fabriqués",    re.IGNORECASE),  # FR fabrication
-        # re.compile(r"<texte anglais craft>",              re.IGNORECASE),  # EN
+
+        re.compile(r"is crying out for your skills",            re.IGNORECASE), # EN artisan
+        re.compile(r"You are invited to join .+'s workshop",   re.IGNORECASE),  # EN groupe
+        re.compile(r"All items have been created!",             re.IGNORECASE),  # EN fabrication
+
+        re.compile(r"solicita tus talentos de artesano",        re.IGNORECASE), # ES artisan
+        re.compile(r"te invita a pasarte por su taller",        re.IGNORECASE),  # ES atelier
+        re.compile(r"¡Todos los objetos han sido fabricados!",  re.IGNORECASE),  # ES fabrication
     ], "🔨"),
 
     # ── PVP : percepteur attaqué ──────────────────────────────────────────────
     ("pvp", [
-        re.compile(r"percepteur.+est attaqué en",           re.IGNORECASE),  # FR
-        # re.compile(r"<texte anglais pvp>",                re.IGNORECASE),  # EN
+        re.compile(r"percepteur.+est attaqué en",             re.IGNORECASE),  # FR
+        re.compile(r"The perceptor .+is attacked in",         re.IGNORECASE),  # EN
+        re.compile(r"El recaudador .+está siendo atacado en", re.IGNORECASE),  # ES
     ], "🛡️"),
 ]
 

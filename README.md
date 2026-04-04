@@ -28,10 +28,13 @@ Vidéo de présentation :
 ---
 
 # Pré-requis
+* Autorisé les applications à accéder à vos notifications (Paramètre > Confidentialité > Notifications > "activer")
 * Activer les notifications sur vos comptes Dofus (option en jeu > général > notification en arrière plan) [screen](https://github.com/Slyss42/Dracoon/blob/46b5f9711967baa45749e804de905726fff89c6a/activer-notification-ig.png)
-* Activer les notifications Windows (Paramètre > Système > Actions et notifications > "activer"
-* Désactiver "autoriser les notifications à émettre des sons" (ou le faire spécifiquement pour Dofus si vous voulez garder le son pour les autres applications) [screen](https://github.com/Slyss42/Dracoon/blob/7fae9b3246307ed8bc5035d0d623450cbc735c73/activer-notification-windows1.png)
-* Cliquer sur l'application "Dofus 1" pour désactiver l'affichage des bannières. Vous pouvez donc désactiver le son des notifications de Dofus à cet endroit (si vous préférez avoir le son des autres notifications) [screen](https://github.com/Slyss42/Dracoon/blob/ce4e21739dc6cbe9c16bf4d05bd57da43d9ef453/activer-notification-windows2.png)
+* Activer les notifications Windows (Paramètre > Système > Actions et notifications > "activer")
+
+# Recommandations
+* Désactiver "autoriser les notifications à émettre des sons" (ou le faire spécifiquement pour Dofus si vous voulez garder le son pour les autres applications). (Paramètre > Système > Actions et notifications) [screen](https://github.com/Slyss42/Dracoon/blob/7fae9b3246307ed8bc5035d0d623450cbc735c73/activer-notification-windows1.png)
+* Au même endroit (Paramètre > Système > Actions et notifications), cliquez sur l'application "Dofus 1" et désactivez les bannières de notifications.  Vous pouvez donc désactiver le son des notifications de Dofus à cet endroit (si vous préférez avoir le son des autres notifications) [screen](https://github.com/Slyss42/Dracoon/blob/ce4e21739dc6cbe9c16bf4d05bd57da43d9ef453/activer-notification-windows2.png)
 
 ---
 # Installation depuis le code

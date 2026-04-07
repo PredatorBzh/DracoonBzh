@@ -17,7 +17,7 @@ from datetime import datetime
 # 1. INFORMATIONS GÉNÉRALES
 # ══════════════════════════════════════════════════════════════════════════════
 
-APP_VERSION = "2.0.0"
+APP_VERSION = "2.0.1"
 APP_GITHUB  = "https://github.com/Slyss42/Dracoon"
 APP_TWITTER = "https://x.com/Slyss42"
 APP_LEGAL   = (
@@ -35,7 +35,7 @@ if getattr(_sys, "frozen", False):
     ICON_PATH = os.path.join(_sys._MEIPASS, "icon.ico")
 else:
     ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
-
+    
 
 
 # ─── Dépendances optionnelles ─────────────────────────────────────────────────
@@ -707,8 +707,8 @@ class App(tk.Tk):
                      "Si vous n'avez pas téléchargé ce programme depuis les deux liens "
                      "ci-dessus, ou si vous avez obtenu votre lien depuis un site internet, "
                      "vous avez probablement téléchargé un malware.\n\n"
-                     "Changez immédiatement l'ensemble de vos mots de passe "
-                     "ainsi que vos données sensibles."
+                     "Scannez votre ordinateur et vérifier la véracité de votre launcher Ankama."
+                     " Changez vos mots de passe à partir d'un appareil non-infecté. "
                  ),
                  bg="#2a1a1a", fg=self.TEXT,
                  font=FONT_BODY,
@@ -790,7 +790,7 @@ class App(tk.Tk):
         if self._tray_thread and self._tray_thread.is_alive():
             self.withdraw()
             return
-        self.withdraw()
+        self.withdraw()  
         menu = pystray.Menu(
             pystray.MenuItem("Afficher", self._tray_show, default=True),
             pystray.MenuItem("Quitter",  self._tray_quit),
@@ -1793,6 +1793,13 @@ class App(tk.Tk):
 
                     for notif in new_notifs:
                         seen_ids.add(notif.id)
+                        # ── NOUVEAU : Suppression ultra-précoce ───────────────────────────
+                        # On le fait AVANT l'analyse du texte pour gagner du temps
+                        try:
+                            listener.remove_notification(notif.id)
+                        except Exception:
+                            pass
+                        # ──────────────────────────────────────────────────────────────────
                         try:
                             binding = notif.notification.visual.get_binding(
                                 winnot.KnownNotificationBindings.toast_generic)

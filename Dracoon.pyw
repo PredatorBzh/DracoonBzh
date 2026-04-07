@@ -17,7 +17,7 @@ from datetime import datetime
 # 1. INFORMATIONS GÉNÉRALES
 # ══════════════════════════════════════════════════════════════════════════════
 
-APP_VERSION = "2.0.1"
+APP_VERSION = "2.0.2"
 APP_GITHUB  = "https://github.com/Slyss42/Dracoon"
 APP_TWITTER = "https://x.com/Slyss42"
 APP_LEGAL   = (
@@ -559,6 +559,8 @@ class App(tk.Tk):
 
         # Popup de bienvenue — affichée une seule fois, sauf si l'utilisateur la réactive
         self._welcome_shown: bool = cfg.get("welcome_shown", "0") == "1"
+
+        self.remove_notif_var = tk.BooleanVar(value=True) #option de suppresion de notification
 
         self._build_ui()
 
@@ -1428,6 +1430,21 @@ class App(tk.Tk):
                 btn.pack(side="left", padx=3)
                 self.type_btns[key] = btn
 
+        # Conteneur pour l'option de bannière (pour garder les mêmes marges que "Paramètres globaux")
+        f_opt = tk.Frame(f, bg=self.BG)
+        f_opt.pack(fill="x", padx=16, pady=(10, 0))
+
+        # ── Séparateur ────────────────────────────────────────────────────
+        tk.Frame(f, bg=self.CARD, height=1).pack(fill="x", padx=16, pady=(10, 0))
+
+        tk.Checkbutton(f, text="Supprimer la bannière dès son apparition - Libère la zone de clic en bas à droite immédiatement",
+            variable=self.remove_notif_var,
+            bg=self.BG, fg=self.TEXT, selectcolor=self.CARD,
+            activebackground=self.BG, activeforeground=self.TEXT,
+            font=self.S.Info.font,
+            ).pack(anchor="w", padx=5)
+
+
         # ── Séparateur ────────────────────────────────────────────────────
         tk.Frame(f, bg=self.CARD, height=1).pack(fill="x", padx=16, pady=(10, 0))
 
@@ -1793,12 +1810,12 @@ class App(tk.Tk):
 
                     for notif in new_notifs:
                         seen_ids.add(notif.id)
-                        # ── NOUVEAU : Suppression ultra-précoce ───────────────────────────
-                        # On le fait AVANT l'analyse du texte pour gagner du temps
-                        try:
-                            listener.remove_notification(notif.id)
-                        except Exception:
-                            pass
+                        # ── MODIFICATION : Suppression bannière conditionnelle ───────────────
+                        if self.remove_notif_var.get():
+                            try:
+                                listener.remove_notification(notif.id)
+                            except Exception:
+                                pass
                         # ──────────────────────────────────────────────────────────────────
                         try:
                             binding = notif.notification.visual.get_binding(

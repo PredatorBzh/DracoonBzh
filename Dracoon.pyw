@@ -12,13 +12,14 @@ import winreg
 from tkinter import scrolledtext
 from datetime import datetime
 import psutil
+import time
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. INFORMATIONS GÉNÉRALES
 # ══════════════════════════════════════════════════════════════════════════════
 
-APP_VERSION = "2.0.3"
+APP_VERSION = "2.0.4"
 APP_GITHUB  = "https://github.com/Slyss42/Dracoon"
 APP_TWITTER = "https://x.com/Slyss42"
 APP_LEGAL   = (
@@ -66,6 +67,12 @@ try:
 except Exception:
     TRAY_OK = False
 
+try:
+    import psutil
+    PSUTIL_OK = True
+except Exception:
+    PSUTIL_OK = False
+
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 3. TECHNIQUE — PAR ONGLET
@@ -73,8 +80,11 @@ except Exception:
 
 # ─── TECHNIQUE : Onglet Personnages : tri et réorganisation des fenêtres ────────────────
 TITLE_PATTERN = re.compile(r"^(.+?)\s*-\s*Dofus", re.IGNORECASE)
+LOADING_PATTERN = re.compile(r"^Dofus Retro\b",               re.IGNORECASE)
 
 def _is_dofus_pid(pid: int) -> bool:
+    if not PSUTIL_OK:
+        return True  # fallback : on ne filtre pas, comportement comme avant
     try:
         return "dofus" in psutil.Process(pid).name().lower()
     except Exception:
@@ -199,7 +209,7 @@ def get_dofus_windows() -> list[tuple[int, str]]:
         p = extract_pseudo_from_title(t)
         if p:
             result.append((hwnd, p))
-        else:
+        elif LOADING_PATTERN.match(t):
             result.append((hwnd, "[Chargement…]"))
         return True
     win32gui.EnumWindows(cb, None)
@@ -545,6 +555,7 @@ class App(tk.Tk):
         self._row_height    = 48
         self._tray_icon     = None
         self._tray_thread   = None
+        self._window_snapshot: dict[int, str] = {}  # hwnd → titre, pour détecter les changements
 
         # Raccourcis chargés depuis le registre
         raw_next = cfg.get("shortcut_next", "ctrl+right")
@@ -923,11 +934,11 @@ class App(tk.Tk):
         tk.Label(left, text="Drag & drop pour réordonner", bg=self.BG,
                  fg=self.GRAY, font=self.S.Info.font).pack(anchor="w")
 
-        tk.Button(top, text="↻  Actualiser", bg=self.PANEL, fg=self.TEXT,
-                  relief="flat", cursor="hand2",
-                  font=self.S.Bouton.font_petit,
-                  padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
-                  command=self.refresh_characters).pack(side="right")
+        #tk.Button(top, text="↻  Actualiser", bg=self.PANEL, fg=self.TEXT,
+                  #relief="flat", cursor="hand2",
+                  #font=self.S.Bouton.font_petit,
+                  #padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
+                  #command=self.refresh_characters).pack(side="right")
 
         # ── Pied de page — packés AVANT le canvas pour toujours être visible
         bottom = tk.Frame(f, bg=self.BG, pady=8)
@@ -1476,11 +1487,11 @@ class App(tk.Tk):
 
         tk.Label(per_top, text="Personnalisation par personnage",
                  bg=self.BG, fg=self.TEXT, font=self.S.EnTete.font).pack(side="left")
-        tk.Button(per_top, text="↻  Actualiser", bg=self.PANEL, fg=self.TEXT,
-                  relief="flat", cursor="hand2",
-                  font=self.S.Bouton.font_petit,
-                  padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
-                  command=self.refresh_characters).pack(side="right")
+        #tk.Button(per_top, text="↻  Actualiser", bg=self.PANEL, fg=self.TEXT,
+                  #relief="flat", cursor="hand2",
+                  #font=self.S.Bouton.font_petit,
+                  #padx=self.S.Bouton.padx_petit, pady=self.S.Bouton.pady_petit,
+                  #command=self.refresh_characters).pack(side="right")
 
         tk.Label(f, text="Cliquez sur une icône pour désactiver ce type pour ce personnage uniquement",
                  bg=self.BG, fg=self.GRAY, font=self.S.Info.font).pack(anchor="w", padx=16)
@@ -1742,6 +1753,32 @@ class App(tk.Tk):
 
     # ── Logique AutoFocus ─────────────────────────────────────────────────────
 
+    def _watch_windows(self):
+        """Thread de surveillance : détecte toute modification des fenêtres Dofus
+        (ouverture, fermeture, changement de titre) et rafraîchit automatiquement."""
+        while self._running:
+            try:
+                current = {}
+                def cb(hwnd, _):
+                    if not win32gui.IsWindowVisible(hwnd):
+                        return True
+                    try:
+                        _, pid = win32process.GetWindowThreadProcessId(hwnd)
+                        if not _is_dofus_pid(pid):
+                            return True
+                    except Exception:
+                        return True
+                    current[hwnd] = win32gui.GetWindowText(hwnd)
+                    return True
+                win32gui.EnumWindows(cb, None)
+
+                if current != self._window_snapshot:
+                    self._window_snapshot = current
+                    self.after(0, self.refresh_characters)
+            except Exception:
+                pass
+            time.sleep(0.9)
+
     def _start(self):
         if not WIN32_OK or not WINSDK_OK:
             self.log_msg("Impossible : dépendances manquantes.", "error")
@@ -1750,6 +1787,7 @@ class App(tk.Tk):
         self._set_status("AutoFocus actif", self.GREEN)
         self.log_msg("Écoute démarrée.", "ok")
         threading.Thread(target=self._run_async_loop, daemon=True).start()
+        threading.Thread(target=self._watch_windows,  daemon=True).start()
 
     def _stop(self):
         self._running = False

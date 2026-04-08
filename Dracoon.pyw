@@ -11,13 +11,14 @@ import webbrowser
 import winreg
 from tkinter import scrolledtext
 from datetime import datetime
+import psutil
 
 
 # ══════════════════════════════════════════════════════════════════════════════
 # 1. INFORMATIONS GÉNÉRALES
 # ══════════════════════════════════════════════════════════════════════════════
 
-APP_VERSION = "2.0.2"
+APP_VERSION = "2.0.3"
 APP_GITHUB  = "https://github.com/Slyss42/Dracoon"
 APP_TWITTER = "https://x.com/Slyss42"
 APP_LEGAL   = (
@@ -40,7 +41,7 @@ else:
 
 # ─── Dépendances optionnelles ─────────────────────────────────────────────────
 try:
-    import win32gui, win32con, win32api
+    import win32gui, win32con, win32api, win32process
     WIN32_OK = True
 except Exception:
     WIN32_OK = False
@@ -72,6 +73,12 @@ except Exception:
 
 # ─── TECHNIQUE : Onglet Personnages : tri et réorganisation des fenêtres ────────────────
 TITLE_PATTERN = re.compile(r"^(.+?)\s*-\s*Dofus", re.IGNORECASE)
+
+def _is_dofus_pid(pid: int) -> bool:
+    try:
+        return "dofus" in psutil.Process(pid).name().lower()
+    except Exception:
+        return False
 
 class _GUID(ctypes.Structure):
     _fields_ = [("Data1", ctypes.c_ulong), ("Data2", ctypes.c_ushort),
@@ -180,11 +187,20 @@ def extract_pseudo_from_title(title: str) -> str | None:
 def get_dofus_windows() -> list[tuple[int, str]]:
     result = []
     def cb(hwnd, _):
-        if win32gui.IsWindowVisible(hwnd):
-            t = win32gui.GetWindowText(hwnd)
-            p = extract_pseudo_from_title(t)
-            if p:
-                result.append((hwnd, p))
+        if not win32gui.IsWindowVisible(hwnd):
+            return True
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            if not _is_dofus_pid(pid):
+                return True
+        except Exception:
+            return True
+        t = win32gui.GetWindowText(hwnd)
+        p = extract_pseudo_from_title(t)
+        if p:
+            result.append((hwnd, p))
+        else:
+            result.append((hwnd, "[Chargement…]"))
         return True
     win32gui.EnumWindows(cb, None)
     return result
@@ -401,13 +417,19 @@ def focus_dofus_window(pseudo: str) -> tuple[bool, str]:
     def cb(hwnd, _):
         if not win32gui.IsWindowVisible(hwnd):
             return True
+        try:
+            _, pid = win32process.GetWindowThreadProcessId(hwnd)
+            if not _is_dofus_pid(pid):
+                return True
+        except Exception:
+            return True
         t = win32gui.GetWindowText(hwnd)
-        if re.match(rf"^{re.escape(pseudo)}\s*-\s*Dofus", t, re.IGNORECASE):
+        if re.match(rf"^{re.escape(pseudo)}\s*-\s*Dofus Retro\b", t, re.IGNORECASE):
             found.append((hwnd, t))
         return True
     win32gui.EnumWindows(cb, None)
     if not found:
-        return False, f"Aucune fenêtre « {pseudo} - Dofus… » trouvée"
+        return False, f"Aucune fenêtre « {pseudo} - Dofus Retro… » trouvée"
     return focus_window(found[0][0])
 
 

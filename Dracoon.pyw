@@ -253,7 +253,7 @@ def is_dofus_foreground() -> bool:
     try:
         hwnd = win32gui.GetForegroundWindow()
         title = win32gui.GetWindowText(hwnd)
-        return bool(TITLE_PATTERN.match(title))
+        return bool(TITLE_PATTERN.match(title)) or LOADING_PATTERN.match(title))
     except Exception:
         return False
 
@@ -1300,12 +1300,28 @@ class App(tk.Tk):
         focus_dofus_window(self._char_main)
 
     def _focus_next(self):
-        if is_dofus_foreground():
+        if not is_dofus_foreground():
+            return
+        hwnd = win32gui.GetForegroundWindow()
+        title = win32gui.GetWindowText(hwnd)
+        if TITLE_PATTERN.match(title):
+            # état stable → immédiat
             self._cycle(+1)
+        else:
+            # loading → exécuté dans la boucle UI
+            self.after(0, lambda: self._cycle(+1))
 
     def _focus_prev(self):
-        if is_dofus_foreground():
+        if not is_dofus_foreground():
+            return
+        hwnd = win32gui.GetForegroundWindow()
+        title = win32gui.GetWindowText(hwnd)
+        if TITLE_PATTERN.match(title):
+            # état stable → immédiat
             self._cycle(-1)
+        else:
+            # loading → exécuté dans la boucle UI
+            self.after(0, lambda: self._cycle(-1)) 
 
     def _focus_back(self):
         """Retour direct à la fenêtre active avant le dernier switch."""

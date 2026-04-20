@@ -72,7 +72,7 @@ PyInstaller --onefile --noconsole --clean ^
 --hidden-import PIL.ImageTk ^
 --hidden-import keyboard ^
 --hidden-import psutil ^
-""C:\CHEMIN\VERS\LE\DOSSIER\UI.py"
+""C:\CHEMIN\VERS\LE\DOSSIER\src\UI.py"
 ```
 * Lancer le fichier `.exe` se trouvant dans le dossier "dist"
 Vous pouvez librement déplacer le .exe et supprimer tous les autres fichiers sans que cela ait un impact.

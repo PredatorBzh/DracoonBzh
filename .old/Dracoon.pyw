@@ -19,7 +19,7 @@ import time
 # 1. INFORMATIONS GÉNÉRALES
 # ══════════════════════════════════════════════════════════════════════════════
 
-APP_VERSION = "2.0.4"
+APP_VERSION = "2.0.5"
 APP_GITHUB  = "https://github.com/Slyss42/Dracoon"
 APP_TWITTER = "https://x.com/Slyss42"
 APP_LEGAL   = (

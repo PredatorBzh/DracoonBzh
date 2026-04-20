@@ -52,6 +52,7 @@ C:\CHEMIN\VERS\LE\DOSSIER>python Dracoon.pyw
 * Build : (passer le .pyw en .exe)
 ```
 PyInstaller --onefile --noconsole --clean ^
+--name "Dracoon" ^
 --icon "C:\CHEMIN\VERS\LE\DOSSIER\icon.ico" ^
 --add-data "C:\CHEMIN\VERS\LE\DOSSIER\icon.ico;." ^
 --hidden-import win32gui ^
@@ -69,7 +70,8 @@ PyInstaller --onefile --noconsole --clean ^
 --hidden-import PIL.ImageDraw ^
 --hidden-import PIL.ImageTk ^
 --hidden-import keyboard ^
-""C:\CHEMIN\VERS\LE\DOSSIER\Dracoon.pyw"
+--hidden-import psutil ^
+""C:\CHEMIN\VERS\LE\DOSSIER\UI.py"
 ```
 * Lancer le fichier `.exe` se trouvant dans le dossier "dist"
 Vous pouvez librement déplacer le .exe et supprimer tous les autres fichiers sans que cela ait un impact.

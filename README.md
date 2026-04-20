@@ -35,6 +35,7 @@ Vidéo de présentation :
 # Recommandations
 * Désactiver "autoriser les notifications à émettre des sons" (ou le faire spécifiquement pour Dofus si vous voulez garder le son pour les autres applications). (Paramètre > Système > Actions et notifications) [screen](https://github.com/Slyss42/Dracoon/blob/7fae9b3246307ed8bc5035d0d623450cbc735c73/activer-notification-windows1.png)
 * Au même endroit (Paramètre > Système > Actions et notifications), cliquez sur l'application "Dofus 1" et désactivez les bannières de notifications.  Vous pouvez donc désactiver le son des notifications de Dofus à cet endroit (si vous préférez avoir le son des autres notifications) [screen](https://github.com/Slyss42/Dracoon/blob/ce4e21739dc6cbe9c16bf4d05bd57da43d9ef453/activer-notification-windows2.png)
+* Dans les paramètres de Dracoon, cocher "Supprimer la bannière dès son apparition"
 
 ---
 # Installation depuis le code
@@ -42,14 +43,14 @@ Prérequis :
 * Python 3.10 minimum [(site officiel)](https://www.python.org/downloads/)
 * Installer les dépendances : (ouvrir l'invite de commande, copier/coller le texte ci-dessous, puis presser enter)
 ``` 
-pip install pywin32 winsdk keyboard pystray Pillow pyinstaller
+pip install pywin32 winsdk keyboard pystray Pillow psutil pyinstaller
 ```
-* Lancement pour test : (ouvrir l'invite de commande aller jusqu'au dossier ou se trouve le script et taper "python Dracoon.pyw). OU : taper "python" et glisser le .pyw dans l'invite de commande + presser enter
+* Lancement pour test : (ouvrir l'invite de commande aller jusqu'au dossier ou se trouve le script et taper "python Dracoon.pyw"). OU : taper "python" et glisser le UI.py dans l'invite de commande + presser enter
 ```
-C:\CHEMIN\VERS\LE\DOSSIER>python Dracoon.pyw
+C:\CHEMIN\VERS\LE\DOSSIER\SRC>python UI.py
 ```
  
-* Build : (passer le .pyw en .exe)
+* Build : (passer le .py en .exe)
 ```
 PyInstaller --onefile --noconsole --clean ^
 --name "Dracoon" ^

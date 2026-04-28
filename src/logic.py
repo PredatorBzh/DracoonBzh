@@ -1,18 +1,11 @@
-import asyncio
 import ctypes
 import ctypes.wintypes as wt
 import json
 import os
 import re
 import sys
-import threading
-import tkinter as tk
-import webbrowser
-import winreg
-from tkinter import scrolledtext
-from datetime import datetime
-import psutil
 import time
+import winreg
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -20,9 +13,8 @@ import time
 # ══════════════════════════════════════════════════════════════════════════════
 
 # ─── Icône ────────────────────────────────────────────────────────────────────
-import sys as _sys
-if getattr(_sys, "frozen", False):
-    ICON_PATH = os.path.join(_sys._MEIPASS, "icon.ico")
+if getattr(sys, "frozen", False):
+    ICON_PATH = os.path.join(sys._MEIPASS, "icon.ico")
 else:
     ICON_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "icon.ico")
 
@@ -50,6 +42,7 @@ try:
     import psutil
     PSUTIL_OK = True
 except Exception:
+    psutil = None
     PSUTIL_OK = False
 
 try:
@@ -210,7 +203,6 @@ def set_window_app_id(hwnd: int, app_id: str | None) -> bool:
 
 
 def reorder_with_ungroup_regroup(hwnds: list[int], log_fn=None):
-    import time
     # 1. Dégrouper
     for i, hwnd in enumerate(hwnds):
         ok = set_window_app_id(hwnd, f"DofusRetro.Char.{hwnd}")

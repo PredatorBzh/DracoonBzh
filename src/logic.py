@@ -171,6 +171,7 @@ def set_window_app_id(hwnd: int, app_id: str | None) -> bool:
     if not UNGROUP_OK:
         return False
     pstore = ctypes.c_void_p()
+    Release = None
     try:
         hr = _shell32.SHGetPropertyStoreForWindow(
             hwnd, ctypes.byref(_IID_PS), ctypes.byref(pstore))
@@ -196,10 +197,15 @@ def set_window_app_id(hwnd: int, app_id: str | None) -> bool:
         hr = SetValue(pstore.value, ctypes.byref(_PKEY_AUMI), ctypes.byref(pv))
         if hr == 0:
             Commit(pstore.value)
-        Release(pstore.value)
         return hr == 0
     except Exception:
         return False
+    finally:
+        if Release is not None and pstore.value:
+            try:
+                Release(pstore.value)
+            except Exception:
+                pass
 
 
 def reorder_with_ungroup_regroup(hwnds: list[int], log_fn=None):

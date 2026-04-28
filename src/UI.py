@@ -789,8 +789,9 @@ class App(tk.Tk):
             if self._shortcut_back: keyboard.add_hotkey(self._shortcut_back, self._focus_back)
             if self._shortcut_main: keyboard.add_hotkey(self._shortcut_main, self._focus_main)
             self._persist_config()
-        except Exception:
-            pass
+        except Exception as e:
+            if not silent:
+                self.log_msg(f"Raccourci invalide : {e}", "error")
 
     def _focus_main(self):
         if not is_dofus_foreground() or not self._char_main:
@@ -1229,6 +1230,8 @@ class App(tk.Tk):
             self._loop.run_until_complete(self._listen())
         except Exception as e:
             self.after(0, self.log_msg, f"Erreur fatale : {e}", "error")
+            self._running = False
+            self.after(0, self._set_status, "AutoFocus inactif", self.GRAY)
         finally:
             self._loop.close()
 
@@ -1244,6 +1247,7 @@ class App(tk.Tk):
 
         self.after(0, self.log_msg, "Accès aux notifications accordé.", "ok")
         seen_ids: set[int] = set()
+        seen_order: list[int] = []
 
         event      = asyncio.Event()
         use_events = False
@@ -1292,6 +1296,7 @@ class App(tk.Tk):
 
                     for notif in new_notifs:
                         seen_ids.add(notif.id)
+                        seen_order.append(notif.id)
                         # ── Suppression bannière conditionnelle ───────────────
                         if self.remove_notif_var.get():
                             try:
@@ -1383,8 +1388,10 @@ class App(tk.Tk):
                                 self.after(0, self.log_msg,
                                     f"[debug] Exception notif : {e}", "debug")
 
-                    if len(seen_ids) > 500:
-                        seen_ids.clear()
+                    if len(seen_order) > 500:
+                        drop = seen_order[:-250]
+                        seen_order = seen_order[-250:]
+                        seen_ids.difference_update(drop)
 
                 except Exception as e:
                     self.after(0, self.log_msg, f"Erreur de lecture : {e}", "error")

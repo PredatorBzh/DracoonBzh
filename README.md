@@ -43,7 +43,7 @@ Prérequis :
 * Python 3.10 minimum [(site officiel)](https://www.python.org/downloads/)
 * Installer les dépendances : (ouvrir l'invite de commande, copier/coller le texte ci-dessous, puis presser enter)
 ``` 
-pip install pywin32 winsdk keyboard pystray Pillow psutil pyinstaller
+pip install pywin32 winsdk keyboard pystray Pillow psutil pyinstaller PyQt6
 ```
 * Lancement pour test : (ouvrir l'invite de commande aller jusqu'au dossier ou se trouve le script et taper "python Dracoon.pyw"). OU : taper "python" et glisser le UI.py dans l'invite de commande + presser enter
 ```
@@ -72,6 +72,32 @@ PyInstaller --onefile --noconsole --clean ^
 --hidden-import PIL.ImageTk ^
 --hidden-import keyboard ^
 --hidden-import psutil ^
+--hidden-import PyQt6 `
+--hidden-import PyQt6.QtWidgets `
+--hidden-import PyQt6.QtCore `
+--hidden-import PyQt6.QtGui `
+--exclude-module PyQt6.QtWebEngine `
+--exclude-module PyQt6.QtWebEngineCore `
+--exclude-module PyQt6.QtWebEngineWidgets `
+--exclude-module PyQt6.Qt3D `
+--exclude-module PyQt6.QtMultimedia `
+--exclude-module PyQt6.QtNetwork `
+--exclude-module PyQt6.QtSql `
+--exclude-module PyQt6.QtSvg `
+--exclude-module PyQt6.QtQml `
+--exclude-module PyQt6.QtQuick `
+--exclude-module PyQt6.QtBluetooth `
+--exclude-module PyQt6.QtDBus `
+--exclude-module PyQt6.QtDesigner `
+--exclude-module PyQt6.QtHelp `
+--exclude-module PyQt6.QtOpenGL `
+--exclude-module PyQt6.QtPdf `
+--exclude-module PyQt6.QtPositioning `
+--exclude-module PyQt6.QtRemoteObjects `
+--exclude-module PyQt6.QtSensors `
+--exclude-module PyQt6.QtSerialPort `
+--exclude-module PyQt6.QtTest `
+--exclude-module PyQt6.QtXml `
 ""C:\CHEMIN\VERS\LE\DOSSIER\src\UI.py"
 ```
 * Lancer le fichier `.exe` se trouvant dans le dossier "dist"
